@@ -203,4 +203,7 @@ set(config_module_list
 
 	# EKF
 	examples/ekf_att_pos_estimator
+
+	#fall prototype
+	examples/fall_proto_demo
 )
