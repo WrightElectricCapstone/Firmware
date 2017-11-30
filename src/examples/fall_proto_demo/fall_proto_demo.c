@@ -3,7 +3,7 @@
 /**
  * @file fall_proto_demo.c
  * application demonstrating fine servo and motor control
- * part of the Wright Electric capston fall prototype demo
+ * part of the Wright Electric capstone fall prototype demo
  *
  * @author Alexander Wolff <alexander_wolff@umail.ucsb.edu>
  */
