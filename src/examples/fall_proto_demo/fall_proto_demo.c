@@ -26,18 +26,15 @@
 #define FULL_PITCH_UP 2000
 #define FULL_PITCH_DOWN 1000
 #define NEUTRAL_PITCH 1500
+#define NUM_MOTORS 1
+#define NUM_SERVOS 1
 
 /*
 *Initialize UART
 *@param uart_name = the name of the uart which you want to init
 */
 int uart_init(char* uart_name);
-/*
-*Set the baudrate for the uart
-*@param fd = the UART number (this is the value returned by uart_init)
-*@param baud = the baud rate to set the UART to, this is probably 57600 for any Pixhawk 2 port
-*/
-int set_uart_baudrate(const int fd, unsigned int baud);
+
 /*
 *Sets channel number to tagret on the servo controller connected to UART number
 *@param uartNumber = the uart which the servo controller is connected on (must be open)
@@ -46,15 +43,25 @@ int set_uart_baudrate(const int fd, unsigned int baud);
 */
 bool setTargetCP(int uartNumber, unsigned char channelNumber, unsigned short target );
 
+//Write All Outputs to Servo Controller
+int WriteServos(void);
+
 
 /*
 *Global variables tracking the current servo outputs and the new servo outputs
 */
-int CurrPitch;
+volatile int CurrPitch;
 int TargetPitch;
-int CurrThrottle;
+volatile int CurrThrottle;
 int TargetThrottle;
 
+//The Uart number connected to the Servo Controller
+int ServoControllerUart;
+
+//The Servo Controller channels with motors on them
+int MotorChannels[NUM_MOTORS] = {0};
+//The servo controller channels with servos on them
+int ServoChannels[NUM_SERVOS] = {1};
 
 /*
 *For Timer Interrupt to update servo updates
@@ -100,7 +107,7 @@ enum Signals{
 /*
 *Variables tracking time to target transition
 */
-int ElapsedTicks = 0;
+volatile int ElapsedTicks = 0;
 int ResumeTick = 0;
 
 
@@ -133,14 +140,20 @@ int fall_proto_demo_main(int argc, char *argv[])
 
 	printf("%s\n","Welcome to the Wright Electric Fall Prototype Demo!");
 	
+	uart_init("/dev/ttyS5");
+	
+
+	CurrThrottle = MIN_THROTTLE;
+	CurrPitch = NEUTRAL_PITCH; 
+
+	WriteServos();
+
+
 	//make sure callback is not already active
 	hrt_cancel(&_call);
 	//Connect Timer Handler and begin executing every TICK_INTERVAL
 	hrt_call_every(&_call,1,TICK_INTERVAL,(hrt_callout)&TimerHandler, NULL);
 
-	//initial outputs	
-	CurrThrottle = MIN_THROTTLE;
-	CurrPitch = NEUTRAL_PITCH; 
 
 	//write initial state to servo controller, this will be uncommented once servo controller is connected to pixhawk
 	//int uart = uart_init("/dev/ttyS3");
@@ -151,17 +164,23 @@ int fall_proto_demo_main(int argc, char *argv[])
 	//begin takeoff
 	TargetThrottle = MAX_THROTTLE;
 	TargetPitch = FULL_PITCH_UP;
-	ResumeTick = 1000;
 	ElapsedTicks = 0;
+	ResumeTick = 1000;
+
 	while(ElapsedTicks < ResumeTick)
 	{
+		/*IMPORTANT:
+		*Program hangs here unless we do something in the loop
+		*Need to figure out why (maybe compiler optimization?)
+		*For now just print to give CPU something to do
+		**/
 		printf("%d\n",CurrThrottle);
 	}
 
 	//Maintain pitch, not trying to loop out
 	TargetPitch = NEUTRAL_PITCH;
-	ResumeTick = 1000;
 	ElapsedTicks = 0;
+	ResumeTick = 1000;
 	while(ElapsedTicks < ResumeTick)
 	{
 		printf("%d\n",CurrThrottle);
@@ -170,8 +189,8 @@ int fall_proto_demo_main(int argc, char *argv[])
 	//shift to cruise throttle and bring nose level
 	TargetThrottle = MID_THROTTLE;
 	TargetPitch = FULL_PITCH_DOWN;
-	ResumeTick = 1000;
 	ElapsedTicks = 0;
+	ResumeTick = 100;
 	while(ElapsedTicks < ResumeTick)
 	{
 		printf("%d\n",CurrThrottle);
@@ -179,8 +198,8 @@ int fall_proto_demo_main(int argc, char *argv[])
 
 	//cruise
 	TargetPitch = NEUTRAL_PITCH;
-	ResumeTick = 1000;
 	ElapsedTicks = 0;
+	ResumeTick = 1000;
 	while(ElapsedTicks < ResumeTick)
 	{
 		printf("%d\n",CurrThrottle);
@@ -188,9 +207,9 @@ int fall_proto_demo_main(int argc, char *argv[])
 
 	//begin descent
 	TargetPitch = FULL_PITCH_DOWN;
-	TargetThrottle = MIN_THROTTLE;
-	ResumeTick = 1000;
+	TargetThrottle = MIN_THROTTLE + (MAX_THROTTLE - MIN_THROTTLE) / 5;
 	ElapsedTicks = 0;
+	ResumeTick = 200;
 	while(ElapsedTicks < ResumeTick)
 	{
 		printf("%d\n",CurrThrottle);
@@ -198,8 +217,8 @@ int fall_proto_demo_main(int argc, char *argv[])
 
 	//reached angle of attack
 	TargetPitch = NEUTRAL_PITCH;
-	ResumeTick = 1000;
 	ElapsedTicks = 0;
+	ResumeTick = 200;
 	while(ElapsedTicks < ResumeTick)
 	{
 		printf("%d\n",CurrThrottle);
@@ -207,8 +226,8 @@ int fall_proto_demo_main(int argc, char *argv[])
 
 	//flare point reached
 	TargetPitch = FULL_PITCH_UP;
-	ResumeTick = 1000;
 	ElapsedTicks = 0;
+	ResumeTick = 200;
 	while(ElapsedTicks < ResumeTick)
 	{
 		printf("%d\n",CurrThrottle);
@@ -216,8 +235,9 @@ int fall_proto_demo_main(int argc, char *argv[])
 
 	//land
 	TargetPitch = NEUTRAL_PITCH;
-	ResumeTick = 1000;
+	TargetThrottle = MIN_THROTTLE;
 	ElapsedTicks = 0;
+	ResumeTick = 200;
 	while(ElapsedTicks < ResumeTick)
 	{
 		printf("%d\n",CurrThrottle);
@@ -254,6 +274,7 @@ int Dispatch(int Sig)
 		case THROTTLE_STOP:
 		{
 			ThrottleStop(Sig);
+			break;
 		}
 
 	}
@@ -284,6 +305,7 @@ int Dispatch(int Sig)
 void TimerHandler(void* arg)
 {
 	Dispatch(TICK);
+	ElapsedTicks++;
 }
 
 int ThrottleUp(int Sig)
@@ -299,9 +321,9 @@ int ThrottleUp(int Sig)
 	else if(Sig == TICK)
 	{
 		CurrThrottle += 1;
-		ElapsedTicks += 1;
 	}
 	//write new outputs to servos
+	WriteServos();
 	return 0;
 }
 
@@ -318,9 +340,9 @@ int ThrottleDown(int Sig)
 	else if(Sig == TICK)
 	{
 		CurrThrottle -= 1;
-		ElapsedTicks += 1;
 	}
 	//write new outputs to servos
+	WriteServos();
 	return 0;
 }
 
@@ -336,10 +358,10 @@ int ThrottleHold(int Sig)
 	}
 	else if (Sig == TICK)
 	{
-		ElapsedTicks += 1;
 		//do nothing
 	}
 	//write new outputs to servos
+	WriteServos();
 	return 0;
 
 }
@@ -351,65 +373,65 @@ int ThrottleStop(int Sig)
 	return 0;
 	if(Sig == TICK)
 	{
-		ElapsedTicks++;
 	}
 	//write new outputs to servos
+	WriteServos();
 }
 
 int PitchUp(int Sig)
 {
-	if(CurrThrottle > TargetThrottle)
+	if(CurrPitch > TargetPitch)
 	{
-		ThrottleState = THROTTLE_DOWN;
+		PitchState = PITCH_DOWN;
 	}
-	else if(CurrThrottle == TargetThrottle)
+	else if(CurrPitch == TargetPitch)
 	{
-		ThrottleState = THROTTLE_HOLD;
+		PitchState = PITCH_HOLD;
 	}
 	else if (Sig == TICK)
 	{
-		ElapsedTicks += 1;
-		CurrThrottle += 1;
+		CurrPitch += 1;
 	}
 	//write new outputs to servos
+	WriteServos();
 	return 0;
 }
 
 int PitchDown(int Sig)
 {
-	if(CurrThrottle < TargetThrottle)
+	if(CurrPitch < TargetPitch)
 	{
-		ThrottleState = THROTTLE_UP;
+		PitchState = PITCH_UP;
 	}
-	else if(CurrThrottle == TargetThrottle)
+	else if(CurrPitch == TargetPitch)
 	{
-		ThrottleState = THROTTLE_HOLD;
+		PitchState = PITCH_HOLD;
 	}
 	else if (Sig == TICK)
 	{
-		ElapsedTicks += 1;
-		CurrThrottle -= 1;
+		CurrPitch -= 1;
 	}
 	//write new outputs to servos
+	WriteServos();
 	return 0;
 }
 
 int PitchHold(int Sig)
 {
-	if(CurrThrottle < TargetThrottle)
+	if(CurrPitch > TargetPitch)
 	{
-		ThrottleState = THROTTLE_UP;
+		PitchState = PITCH_DOWN;
 	}
-	else if(CurrThrottle > TargetThrottle)
+	else if(CurrPitch < TargetPitch)
 	{
-		ThrottleState = THROTTLE_DOWN;
+		PitchState = PITCH_UP;
 	}
-	else if(Sig == TICK)
+	else if (Sig == TICK)
 	{
-		ElapsedTicks += 1;
 		//do nothing
 	}
 	//write new outputs to servos
+	WriteServos();
 	return 0;
 }
 
@@ -417,60 +439,29 @@ int PitchHold(int Sig)
 
 int uart_init(char * uart_name)
 {
-    int serial_fd = open(uart_name, O_RDWR | O_NOCTTY);
-
-    if (serial_fd < 0) {
-        err(1, "failed to open port: %s", uart_name);
-        return false;
-    }
-    return serial_fd;
-}
-
-
-int set_uart_baudrate(const int fd, unsigned int baud)
-{
-    int speed;
-
-    switch (baud) {
-        case 9600:   speed = B9600;   break;
-        case 19200:  speed = B19200;  break;
-        case 38400:  speed = B38400;  break;
-        case 57600:  speed = B57600;  break;
-        case 115200: speed = B115200; break;
-        default:
-            warnx("ERR: baudrate: %d\n", baud);
-            return -EINVAL;
+	ServoControllerUart = open(uart_name, O_RDWR | O_NONBLOCK | O_NOCTTY);
+    if (ServoControllerUart < 0) {
+        errx(1, "failed to open port: %s", uart_name);
+        return 0;
     }
 
+    // setup uart
+    warnx("setting up uart");
     struct termios uart_config;
+    int ret = tcgetattr(ServoControllerUart, &uart_config);
+    if (ret < 0) errx(1, "failed to get attr");
+    uart_config.c_oflag &= ~ONLCR; // no CR for every LF
+    ret = cfsetispeed(&uart_config, B57600);
+    if (ret < 0) errx(1, "failed to set input speed");
+    ret = cfsetospeed(&uart_config, B57600);
+    if (ret < 0) errx(1, "failed to set output speed");
+    ret = tcsetattr(ServoControllerUart, TCSANOW, &uart_config);
+    if (ret < 0) errx(1, "failed to set attr");
 
-    int termios_state;
-
-    /* fill the struct for the new configuration */
-    tcgetattr(fd, &uart_config);
-    /* clear ONLCR flag (which appends a CR for every LF) */
-    uart_config.c_oflag &= ~ONLCR;
-    /* no parity, one stop bit */
-    uart_config.c_cflag &= ~(CSTOPB | PARENB);
-    /* set baud rate */
-    if ((termios_state = cfsetispeed(&uart_config, speed)) < 0) {
-        warnx("ERR: %d (cfsetispeed)\n", termios_state);
-        return false;
-    }
-
-    if ((termios_state = cfsetospeed(&uart_config, speed)) < 0) {
-        warnx("ERR: %d (cfsetospeed)\n", termios_state);
-        return false;
-    }
-
-    if ((termios_state = tcsetattr(fd, TCSANOW, &uart_config)) < 0) {
-        warnx("ERR: %d (tcsetattr)\n", termios_state);
-        return false;
-    }
-
-    return true;
+    // clear old data
+    tcflush(ServoControllerUart, TCIOFLUSH);
+    return 0;
 }
-
 
 
 
@@ -485,3 +476,16 @@ bool setTargetCP(int uartNumber, unsigned char channelNumber, unsigned short tar
 
 
 
+int WriteServos(void)
+{
+	for(int i = 0; i < NUM_MOTORS; i++)
+	{
+		setTargetCP(ServoControllerUart, MotorChannels[i], CurrThrottle * 4);
+	}
+
+	for(int i = 0; i < NUM_SERVOS; i++)
+	{
+		setTargetCP(ServoControllerUart, ServoChannels[i], CurrPitch * 4);
+	}
+	return 0;
+}
