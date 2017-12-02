@@ -108,7 +108,7 @@ enum Signals{
 *Variables tracking time to target transition
 */
 volatile int ElapsedTicks = 0;
-int ResumeTick = 0;
+volatile int ResumeTick = 0;
 
 
 /*
@@ -143,9 +143,9 @@ int fall_proto_demo_main(int argc, char *argv[])
 	uart_init("/dev/ttyS5");
 	
 
+	//Set initial state
 	CurrThrottle = MIN_THROTTLE;
 	CurrPitch = NEUTRAL_PITCH; 
-
 	WriteServos();
 
 
@@ -154,11 +154,6 @@ int fall_proto_demo_main(int argc, char *argv[])
 	//Connect Timer Handler and begin executing every TICK_INTERVAL
 	hrt_call_every(&_call,1,TICK_INTERVAL,(hrt_callout)&TimerHandler, NULL);
 
-
-	//write initial state to servo controller, this will be uncommented once servo controller is connected to pixhawk
-	//int uart = uart_init("/dev/ttyS3");
-	//set_uart_baudrate(uart, 57600);
-	//setTargetCP(uart, 0, 4000)
 
 
 	//begin takeoff
@@ -390,7 +385,7 @@ int PitchUp(int Sig)
 	}
 	else if (Sig == TICK)
 	{
-		CurrPitch += 1;
+		CurrPitch += 50;
 	}
 	//write new outputs to servos
 	WriteServos();
@@ -409,7 +404,7 @@ int PitchDown(int Sig)
 	}
 	else if (Sig == TICK)
 	{
-		CurrPitch -= 1;
+		CurrPitch -= 50;
 	}
 	//write new outputs to servos
 	WriteServos();
