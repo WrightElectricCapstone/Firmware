@@ -17,6 +17,7 @@
 #include <math.h>
 #include <termios.h>
 #include <drivers/drv_hrt.h>
+#include <arch/irq.h>
 
 
 #define TICK_INTERVAL 10000
@@ -26,8 +27,8 @@
 #define FULL_PITCH_UP 2000
 #define FULL_PITCH_DOWN 1000
 #define NEUTRAL_PITCH 1500
-#define NUM_MOTORS 1
-#define NUM_SERVOS 1
+#define NUM_MOTORS 4
+#define NUM_SERVOS 2
 
 /*
 *Initialize UART
@@ -59,9 +60,9 @@ int TargetThrottle;
 int ServoControllerUart;
 
 //The Servo Controller channels with motors on them
-int MotorChannels[NUM_MOTORS] = {0};
+int MotorChannels[NUM_MOTORS] = {0,1,2,3};
 //The servo controller channels with servos on them
-int ServoChannels[NUM_SERVOS] = {1};
+int ServoChannels[NUM_SERVOS] = {5,6};
 
 /*
 *For Timer Interrupt to update servo updates
@@ -109,8 +110,7 @@ enum Signals{
 */
 volatile int ElapsedTicks = 0;
 volatile int ResumeTick = 0;
-
-
+volatile int x = 0;
 /*
 *Sends a signal to the state machine, calls the appropriate state handlers and passes Sig to state machine
 */
@@ -146,6 +146,8 @@ int fall_proto_demo_main(int argc, char *argv[])
 	//Set initial state
 	CurrThrottle = MIN_THROTTLE;
 	CurrPitch = NEUTRAL_PITCH; 
+	TargetPitch = NEUTRAL_PITCH;
+	TargetThrottle = MIN_THROTTLE;
 	WriteServos();
 
 
@@ -158,7 +160,7 @@ int fall_proto_demo_main(int argc, char *argv[])
 
 	//begin takeoff
 	TargetThrottle = MAX_THROTTLE;
-	TargetPitch = FULL_PITCH_UP;
+	TargetPitch = NEUTRAL_PITCH;
 	ElapsedTicks = 0;
 	ResumeTick = 1000;
 
@@ -169,73 +171,99 @@ int fall_proto_demo_main(int argc, char *argv[])
 		*Need to figure out why (maybe compiler optimization?)
 		*For now just print to give CPU something to do
 		**/
-		printf("%d\n",CurrThrottle);
+		printf("%d\n", CurrThrottle);
 	}
 
 	//Maintain pitch, not trying to loop out
-	TargetPitch = NEUTRAL_PITCH;
+	TargetPitch = FULL_PITCH_UP;
 	ElapsedTicks = 0;
-	ResumeTick = 1000;
+	ResumeTick = 300;
 	while(ElapsedTicks < ResumeTick)
 	{
-		printf("%d\n",CurrThrottle);
+		printf("%d\n", CurrThrottle);
 	}
 
 	//shift to cruise throttle and bring nose level
 	TargetThrottle = MID_THROTTLE;
 	TargetPitch = FULL_PITCH_DOWN;
 	ElapsedTicks = 0;
-	ResumeTick = 100;
+	ResumeTick = 300;
 	while(ElapsedTicks < ResumeTick)
 	{
-		printf("%d\n",CurrThrottle);
+		printf("%d\n", CurrThrottle);
 	}
 
-	//cruise
+	TargetThrottle = MID_THROTTLE;
 	TargetPitch = NEUTRAL_PITCH;
 	ElapsedTicks = 0;
-	ResumeTick = 1000;
+	ResumeTick = 300;
 	while(ElapsedTicks < ResumeTick)
 	{
-		printf("%d\n",CurrThrottle);
+		printf("%d\n", CurrThrottle);
+	}
+
+
+	//cruise
+	TargetPitch = FULL_PITCH_UP;
+	ElapsedTicks = 0;
+	ResumeTick = 500;
+	while(ElapsedTicks < ResumeTick)
+	{
+		printf("%d\n", CurrThrottle);
+	}
+
+	TargetPitch = NEUTRAL_PITCH + (NEUTRAL_PITCH - FULL_PITCH_DOWN) / 2;
+	ElapsedTicks = 0;
+	ResumeTick = 500;
+	while(ElapsedTicks < ResumeTick)
+	{
+		printf("%d\n", CurrThrottle);
+	}
+
+	TargetPitch = NEUTRAL_PITCH + (NEUTRAL_PITCH - FULL_PITCH_UP) / 2;
+	ElapsedTicks = 0;
+	ResumeTick = 500;
+	while(ElapsedTicks < ResumeTick)
+	{
+		printf("%d\n", CurrThrottle);
 	}
 
 	//begin descent
-	TargetPitch = FULL_PITCH_DOWN;
+	TargetPitch = NEUTRAL_PITCH;
 	TargetThrottle = MIN_THROTTLE + (MAX_THROTTLE - MIN_THROTTLE) / 5;
 	ElapsedTicks = 0;
 	ResumeTick = 200;
 	while(ElapsedTicks < ResumeTick)
 	{
-		printf("%d\n",CurrThrottle);
+		printf("%d\n", CurrThrottle);
 	}
 
 	//reached angle of attack
 	TargetPitch = NEUTRAL_PITCH;
 	ElapsedTicks = 0;
-	ResumeTick = 200;
+	ResumeTick = 400;
 	while(ElapsedTicks < ResumeTick)
 	{
-		printf("%d\n",CurrThrottle);
+		printf("%d\n", CurrThrottle);
 	}
 
 	//flare point reached
-	TargetPitch = FULL_PITCH_UP;
+	TargetPitch = NEUTRAL_PITCH;
 	ElapsedTicks = 0;
-	ResumeTick = 200;
+	ResumeTick = 400;
 	while(ElapsedTicks < ResumeTick)
 	{
-		printf("%d\n",CurrThrottle);
+		printf("%d\n", CurrThrottle);
 	}
 
 	//land
 	TargetPitch = NEUTRAL_PITCH;
 	TargetThrottle = MIN_THROTTLE;
 	ElapsedTicks = 0;
-	ResumeTick = 200;
+	ResumeTick = 400;
 	while(ElapsedTicks < ResumeTick)
 	{
-		printf("%d\n",CurrThrottle);
+		printf("%d\n", CurrThrottle);
 	}
 
 
@@ -299,8 +327,10 @@ int Dispatch(int Sig)
 
 void TimerHandler(void* arg)
 {
+	
 	Dispatch(TICK);
 	ElapsedTicks++;
+
 }
 
 int ThrottleUp(int Sig)
@@ -385,7 +415,7 @@ int PitchUp(int Sig)
 	}
 	else if (Sig == TICK)
 	{
-		CurrPitch += 50;
+		CurrPitch += 10;
 	}
 	//write new outputs to servos
 	WriteServos();
@@ -404,7 +434,7 @@ int PitchDown(int Sig)
 	}
 	else if (Sig == TICK)
 	{
-		CurrPitch -= 50;
+		CurrPitch -= 10;
 	}
 	//write new outputs to servos
 	WriteServos();
@@ -446,9 +476,9 @@ int uart_init(char * uart_name)
     int ret = tcgetattr(ServoControllerUart, &uart_config);
     if (ret < 0) errx(1, "failed to get attr");
     uart_config.c_oflag &= ~ONLCR; // no CR for every LF
-    ret = cfsetispeed(&uart_config, B57600);
+    ret = cfsetispeed(&uart_config, B115200);
     if (ret < 0) errx(1, "failed to set input speed");
-    ret = cfsetospeed(&uart_config, B57600);
+    ret = cfsetospeed(&uart_config, B115200);
     if (ret < 0) errx(1, "failed to set output speed");
     ret = tcsetattr(ServoControllerUart, TCSANOW, &uart_config);
     if (ret < 0) errx(1, "failed to set attr");
@@ -473,6 +503,7 @@ bool setTargetCP(int uartNumber, unsigned char channelNumber, unsigned short tar
 
 int WriteServos(void)
 {
+	irqstate_t IntState = px4_enter_critical_section();
 	for(int i = 0; i < NUM_MOTORS; i++)
 	{
 		setTargetCP(ServoControllerUart, MotorChannels[i], CurrThrottle * 4);
@@ -482,5 +513,6 @@ int WriteServos(void)
 	{
 		setTargetCP(ServoControllerUart, ServoChannels[i], CurrPitch * 4);
 	}
+	px4_leave_critical_section(IntState);
 	return 0;
 }

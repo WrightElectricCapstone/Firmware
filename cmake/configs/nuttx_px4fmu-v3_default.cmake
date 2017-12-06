@@ -206,4 +206,5 @@ set(config_module_list
 
 	#fall prototype
 	examples/fall_proto_demo
+
 )
